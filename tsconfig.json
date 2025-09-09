@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "strict": true,
+    "jsx": "preserve",
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "lib": ["ESNext", "DOM"],
+    "skipLibCheck": true,
+    "types": ["vite/client", "@tauri-apps/api"],
+    "baseUrl": ".",
+    "paths": {
+      "@tauri-apps/api": ["node_modules/@tauri-apps/api/tauri"],
+      "@tauri-apps/api/*": ["node_modules/@tauri-apps/api/*"]
+    }
+  },
+  "include": ["src/**/*", "src/**/*.vue"],
+  "exclude": ["node_modules", "src-tauri/**/*"]
+}
