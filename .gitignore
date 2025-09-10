@@ -1,0 +1,3 @@
+
+# Node modules (ignore for Node.js/Tauri projects)
+/node_modules/
