@@ -1,94 +1,122 @@
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center px-2 py-6">
-    <div class="w-full max-w-md mx-auto bg-white border border-gray-200 rounded-2xl shadow-2xl px-6 py-8 space-y-8">
+  <div class="min-h-screen bg-gray-50 flex flex-col">
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 py-3 px-6 flex items-center">
+      <div class="text-xl font-semibold text-gray-800 flex items-center gap-2">
+        🛡️ SecureWipe - Heisenbug
+      </div>
+      <span class="ml-auto text-sm text-gray-500">NIST SP 800-88 Compliant</span>
+    </header>
 
-      <h1 class="text-2xl font-bold text-gray-800 text-center mb-2 tracking-tight">SecureWipe</h1>
-      <p class="text-gray-500 text-center text-sm mb-6">Cross-platform Disk Erasure & Cert Generator</p>
+    <!-- Main wizard area -->
+    <main class="flex-1 bg-white border-x border-gray-200 mx-auto w-full max-w-3xl flex flex-col">
+      <!-- Introduction -->
+      <section class="px-8 py-6 border-b border-gray-100">
+        <p class="text-gray-700 leading-relaxed">
+          Welcome to <span class="font-medium">SecureWipe</span>.  
+          This wizard will guide you through securely erasing a storage device.  
+          Please review each step carefully this process is <span class="font-medium text-red-600">irreversible</span>.
+        </p>
+      </section>
 
-      <!-- Device selection -->
-      <div>
-        <label for="device" class="block text-base font-semibold text-gray-700 mb-2">Select Device</label>
+      <!-- Step: Device selection -->
+      <section class="px-8 py-6 border-b border-gray-100">
+        <h2 class="text-lg font-semibold text-gray-900 mb-2">Step 1: Select Device</h2>
         <select id="device" v-model="selectedPath" :disabled="wiping"
-          class="w-full p-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-gray-50 shadow-sm transition">
+          class="w-full p-2.5 rounded-md border border-gray-300 focus:ring-2 focus:ring-sky-400 focus:outline-none bg-white text-gray-900">
           <option value="" disabled>Select a device...</option>
           <option v-for="dev in devices" :key="dev.path" :value="dev.path">
             {{ devDisplay(dev) }}
           </option>
         </select>
-      </div>
+        <p class="mt-2 text-xs text-gray-500">Ensure you select the correct disk. Data will be permanently lost.</p>
+      </section>
 
-      <!-- Wipe method -->
-      <div>
-        <label for="method" class="block text-base font-semibold text-gray-700 mb-2">Wipe Method</label>
+      <!-- Step: Method selection -->
+      <section class="px-8 py-6 border-b border-gray-100">
+        <h2 class="text-lg font-semibold text-gray-900 mb-2">Step 2: Choose Wipe Method</h2>
         <select id="method" v-model="method" :disabled="wiping || !selectedDev"
-          class="w-full p-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-gray-50 shadow-sm transition">
+          class="w-full p-2.5 rounded-md border border-gray-300 focus:ring-2 focus:ring-sky-400 focus:outline-none bg-white text-gray-900">
           <option value="clear">Clear (Overwrite)</option>
           <option value="purge">Purge (Secure Erase)</option>
         </select>
-      </div>
+        <p class="mt-2 text-xs text-gray-500">NIST SP 800-88 recommended algorithms for HDDs and SSDs.</p>
+      </section>
 
-      <!-- Serial confirmation -->
-      <div v-if="selectedDev && selectedDev.serial && !wiping">
-        <label class="block text-xs text-gray-500 mb-1">Type last 4 digits of serial to confirm</label>
+      <!-- Step: Serial confirmation -->
+      <section v-if="selectedDev && selectedDev.serial && !wiping" class="px-8 py-6 border-b border-gray-100">
+        <h2 class="text-lg font-semibold text-gray-900 mb-2">Step 3: Confirm Serial</h2>
+        <p class="text-sm text-gray-600 mb-2">
+          Please type the last 4 digits of the device’s serial number:
+        </p>
         <input v-model="confirmSerial" placeholder="Last 4 of serial"
-          class="w-full p-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 bg-gray-100 shadow-sm transition" />
-      </div>
+          class="w-full p-2.5 rounded-md border border-gray-300 focus:ring-2 focus:ring-sky-400 bg-gray-50 text-gray-900" />
+      </section>
 
-      <!-- Actions -->
-      <div class="flex gap-2 items-center justify-between mb-2">
+      <!-- Progress -->
+      <section v-if="wiping || lastProgressPct > 0" class="px-8 py-6 border-b border-gray-100">
+        <h2 class="text-lg font-semibold text-gray-900 mb-3">Progress</h2>
+        <div class="h-3 w-full bg-gray-200 rounded-md overflow-hidden">
+          <div class="h-3 bg-sky-500 transition-all duration-300"
+            :style="{ width: `${lastProgressPct}%` }"></div>
+        </div>
+        <div class="flex justify-between items-center mt-2 text-xs text-gray-600">
+          <span class="tabular-nums">{{ lastProgressPct.toFixed(0) }}%</span>
+          <span class="font-medium">{{ lastProgressMsg }}</span>
+        </div>
+      </section>
+
+      <!-- Status -->
+      <section v-if="status" class="px-8 py-6 border-b border-gray-100">
+        <div :class="['w-full px-3 py-2 text-sm rounded-md text-center',
+                      isError ? 'bg-red-50 text-red-700 border border-red-200'
+                              : 'bg-green-50 text-green-700 border border-green-200']">
+          {{ status }}
+        </div>
+      </section>
+
+      <!-- Certificate -->
+      <section v-if="certificate" class="px-8 py-6 border-b border-gray-100">
+        <h2 class="text-lg font-semibold text-gray-900 mb-2">Wipe Certificate</h2>
+        <div class="bg-gray-50 border border-gray-200 rounded-md p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="font-medium text-gray-800">Immutable Blockchain-Verified Report</span>
+            <span class="text-[11px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-700">Verified</span>
+          </div>
+          <div>
+            <span class="font-medium">JSON:</span>
+            <a href="#" @click.prevent="openPath(certificate.json)"
+              class="text-sky-600 underline hover:text-sky-800 font-mono text-sm">
+              {{ filename(certificate.json) }}
+            </a>
+          </div>
+          <div v-if="certificate.pdf">
+            <span class="font-medium">PDF:</span>
+            <a href="#" @click.prevent="openPath(certificate.pdf)"
+              class="text-sky-600 underline hover:text-sky-800 font-mono text-sm">
+              {{ filename(certificate.pdf) }}
+            </a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer actions -->
+    <footer class="bg-white border-t border-gray-200 py-3 px-8 flex items-center justify-between">
+      <div class="text-xs text-gray-400">SecureWipe © 2025</div>
+      <div class="flex gap-3">
+        <button @click="loadDevices" :disabled="wiping"
+          class="px-4 py-2 rounded-md border border-gray-300 font-medium bg-white text-gray-700 hover:bg-gray-100 disabled:bg-gray-100 disabled:text-gray-400">
+          Refresh
+        </button>
         <button
           @click="onPrepareWipe"
           :disabled="!canStartWipe || wiping"
-          class="flex-1 py-2 px-4 rounded-lg font-semibold transition
-          bg-blue-600 text-white hover:bg-blue-700 focus:bg-blue-700 shadow hover:scale-105 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed">
-          {{ wiping ? "Wiping…" : "One-Click Wipe" }}
-        </button>
-        <button @click="loadDevices" :disabled="wiping"
-          class="px-4 py-2 rounded-lg border font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:bg-gray-300 disabled:text-gray-400 transition">
-          Refresh
+          class="px-5 py-2 rounded-md font-medium transition bg-sky-500 text-white hover:bg-sky-600 disabled:bg-gray-200 disabled:text-gray-500">
+          {{ wiping ? "Wiping…" : "Start Wipe" }}
         </button>
       </div>
-
-      <!-- Progress -->
-      <div v-if="wiping || lastProgressPct > 0" class="w-full pt-2">
-        <div class="h-4 w-full bg-gray-200 rounded-lg overflow-hidden relative">
-          <div class="h-4 bg-blue-500 rounded-lg transition-all duration-300"
-               :style="{ width: `${lastProgressPct}%` }"></div>
-        </div>
-        <div class="flex justify-between items-center mt-1 text-xs text-gray-600 px-1">
-          <span>{{ lastProgressPct.toFixed(0) }}%</span>
-          <span class="font-medium">{{ lastProgressMsg }}</span>
-        </div>
-      </div>
-
-      <!-- Status -->
-      <div v-if="status" :class="['w-full p-2 text-sm rounded-lg text-center mt-2', isError ? 'bg-red-100 text-red-700' : 'bg-green-50 text-green-700']">
-        {{ status }}
-      </div>
-
-      <!-- Certificate -->
-      <div v-if="certificate" class="bg-blue-50 border border-blue-200 rounded-xl p-3 mt-4 space-y-2">
-        <h3 class="text-lg font-semibold text-blue-800 text-left">Wipe Certificate</h3>
-        <div>
-          <span class="font-medium">JSON:</span>
-          <a href="#" @click.prevent="openPath(certificate.json)"
-            class="text-blue-600 underline hover:text-blue-900 font-mono text-sm">
-            {{ filename(certificate.json) }}
-          </a>
-        </div>
-        <div v-if="certificate.pdf">
-          <span class="font-medium">PDF:</span>
-          <a href="#" @click.prevent="openPath(certificate.pdf)"
-            class="text-blue-600 underline hover:text-blue-900 font-mono text-sm">
-            {{ filename(certificate.pdf) }}
-          </a>
-        </div>
-      </div>
-
-      <div class="text-center pt-6 text-xs text-gray-400">
-        SecureWipe © 2025. Cross-platform UI for easy, standards-compliant asset erasure & disposal.
-      </div>
-    </div>
+    </footer>
   </div>
 </template>
 
@@ -159,6 +187,7 @@ export default defineComponent({
       try {
         this.devices = (await invoke("get_devices")) as DeviceInfo[];
         this.status = this.devices.length ? "" : "No devices found";
+        this.isError = false;
       } catch (e: any) {
         this.isError = true;
         this.status = `Failed to load devices: ${e.message || e}`;
@@ -185,6 +214,7 @@ export default defineComponent({
         })) as { json: string; pdf?: string };
         this.status = "Wipe complete. Certificate ready.";
         this.lastProgressPct = 100;
+        this.isError = false;
       } catch (e: any) {
         this.isError = true;
         this.status = `Wipe failed: ${e.message || e}`;
@@ -211,5 +241,9 @@ export default defineComponent({
 </script>
 
 <style>
-/* System animation style for smoother transitions */
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  background-color: #f9fafb;
+}
 </style>

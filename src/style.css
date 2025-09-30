@@ -1,3 +1,62 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  /* Enable class strategy for dark mode in Tailwind v4 */
+  --tw-dark: class;
+}
+
+/* Global polish */
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    @apply bg-blue-600 text-white;
+  }
+}
+
+/* Smooth link underline */
+@layer components {
+  a {
+    text-underline-offset: 2px;
+    transition: color 150ms ease, text-decoration-color 150ms ease;
+  }
+}
+
+/* Subtle animated progress stripe */
+@keyframes progressStripes {
+  from { background-position: 0 0; }
+  to { background-position: 40px 0; }
+}
+
+.progress-bar {
+  background-image: linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.25) 25%,
+      rgba(255, 255, 255, 0.05) 25%,
+      rgba(255, 255, 255, 0.05) 50%,
+      rgba(255, 255, 255, 0.25) 50%,
+      rgba(255, 255, 255, 0.25) 75%,
+      rgba(255, 255, 255, 0.05) 75%,
+      rgba(255, 255, 255, 0.05)
+    );
+  background-size: 40px 40px;
+  animation: progressStripes 1s linear infinite;
+}
+
+/* Scrollbar (WebKit + Firefox) */
+* {
+  scrollbar-width: thin;
+  /* Using static color equivalent of slate-400 for linter compatibility */
+  scrollbar-color: #94a3b8 transparent;
+}
+
+*::-webkit-scrollbar { height: 10px; width: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(100, 116, 139, 0.6);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
