@@ -1,5 +1,5 @@
 {
-  "name": "tauri-app",
+  "name": "wiper-teamheisenbug",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -24,5 +24,20 @@
     "typescript": "~5.6.2",
     "vite": "^6.0.3",
     "vue-tsc": "^2.1.10"
-  }
+  },
+  "description": "sih problem solution",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brittytino/Wiper.git"
+  },
+  "keywords": [
+    "wiping"
+  ],
+  "author": "brittytino",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/brittytino/Wiper/issues"
+  },
+  "homepage": "https://github.com/brittytino/Wiper#readme"
 }

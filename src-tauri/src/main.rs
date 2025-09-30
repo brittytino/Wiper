@@ -1,113 +1,103 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
-mod device_manager;
-mod wipe_engine;
-mod certificate_generator;
-mod audit_logger;
-mod crypto;
-mod config;
+mod device;
+mod cert;
 
-use tauri::Manager;
-use device_manager::{DeviceManager, StorageDevice};
-use wipe_engine::{SecureWipeEngine, WipeMethod};
-use certificate_generator::{CertificateGenerator, WipeCertificate};
-use audit_logger::{AuditLogger, AuditLogEntry};
-use once_cell::sync::OnceCell;
-use std::sync::{Mutex, Arc};
-use tokio::sync::Mutex as AsyncMutex;
+use tauri::{Window};
+use tauri::Emitter;
+use chrono::Utc;
+use std::time::Duration;
 
-// Static instances: initialize with no args to OnceCell::new()
-static DEVICE_MANAGER: OnceCell<Mutex<DeviceManager>> = OnceCell::new();
-static AUDIT_LOGGER: OnceCell<AuditLogger> = OnceCell::new();
-static WIPE_ENGINE: OnceCell<Arc<AsyncMutex<SecureWipeEngine>>> = OnceCell::new();
-static CERTIFICATE_GENERATOR: OnceCell<Mutex<CertificateGenerator>> = OnceCell::new();
+use device::DeviceInfo;
+use cert::{WipeCertificate, SignedCertificate, sign_certificate};
 
 #[tauri::command]
-async fn scan_storage_devices() -> Result<Vec<StorageDevice>, String> {
-    // Lock device manager mutex
-    let mut manager = DEVICE_MANAGER.get_or_init(|| Mutex::new(DeviceManager::new()))
-        .lock()
-        .map_err(|e| format!("DeviceManager lock error: {}", e))?;
-    manager.scan_devices().await.map_err(|e| e.to_string())
+async fn get_devices() -> Result<Vec<DeviceInfo>, String> {
+    device::enumerate_devices().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn get_audit_logs() -> Result<Vec<AuditLogEntry>, String> {
-    let logger = AUDIT_LOGGER.get_or_init(|| AuditLogger::new("audit_log.json"));
-    Ok(logger.get_logs().await)
-}
-
-#[tauri::command]
-async fn start_wipe(
+async fn wipe_device(
+    window: Window,
     device_path: String,
-    device_id: String,
-    method: Option<String>,
-) -> Result<WipeCertificate, String> {
-    let method = match method.as_deref() {
-        Some("dod") => WipeMethod::DoD522022M,
-        Some("single") => WipeMethod::SinglePass,
-        _ => WipeMethod::DoD522022M,
+    method: String,
+    operator: Option<String>
+) -> Result<serde_json::Value, String> {
+    let operator = operator.unwrap_or_else(|| "unknown".to_string());
+    let devices = device::enumerate_devices().map_err(|e| e.to_string())?;
+    let device = devices.into_iter().find(|d| d.path == device_path)
+        .unwrap_or(DeviceInfo {
+            path: device_path.clone(),
+            name: device_path.clone(),
+            size_bytes: 0,
+            serial: None,
+            bus: None,
+            kind: None,
+        });
+
+    // Simulate wipe flow
+    for (i, (pct, msg)) in vec![
+        (5, "Preparing device"),
+        (12, "Removing HPA/DCO (simulated)"),
+        (30, "Issuing secure erase / sanitize (simulated)"),
+        (60, "Waiting for device to complete (simulated)"),
+        (85, "Verifying erase (simulated)"),
+        (98, "Finalizing"),
+    ].into_iter().enumerate() {
+        let payload = serde_json::json!({ "pct": pct, "msg": msg });
+        let _ = window.emit("wipe-progress", payload);
+        tokio::time::sleep(Duration::from_secs(1 + (i as u64))).await;
+    }
+
+    let started_at = Utc::now();
+    let finished_at = Utc::now();
+
+    let cert = WipeCertificate {
+        version: "1.0".to_string(),
+        tool_version: env!("CARGO_PKG_VERSION").to_string(),
+        device: cert::Device {
+            model: device.name.clone(),
+            serial: device.serial.clone().unwrap_or_default(),
+            path: device.path.clone(),
+            size_bytes: device.size_bytes,
+            bus: device.bus.clone().unwrap_or_default(),
+            kind: device.kind.clone().unwrap_or_default(),
+        },
+        operation: cert::Operation {
+            nist_level: if method.to_lowercase() == "purge" { "Purge".to_string() } else { "Clear".to_string() },
+            primitive: format!("SIMULATED_{}", method.to_uppercase()),
+            started_at: started_at.to_rfc3339(),
+            finished_at: finished_at.to_rfc3339(),
+            duration_secs: (finished_at - started_at).num_seconds() as u64,
+            verify: cert::Verify { method: "simulated".to_string(), result: true },
+        },
+        host: cert::Host {
+            os: std::env::consts::OS.to_string(),
+            hostname: hostname::get().ok().and_then(|h| h.into_string().ok()).unwrap_or_default(),
+            host_fingerprint: "".to_string(),
+        },
+        transcript_blake3: "".to_string(),
+        pass: true,
     };
 
-    let audit_logger = AUDIT_LOGGER.get_or_init(|| AuditLogger::new("audit_log.json"));
+    let sig: SignedCertificate = sign_certificate(&cert).map_err(|e| e.to_string())?;
+    let mut json_path = std::env::temp_dir();
+    let filename = format!("securewipe_cert_{}.json", Utc::now().timestamp());
+    json_path.push(&filename);
+    let signed_json = serde_json::to_vec_pretty(&sig).map_err(|e| e.to_string())?;
+    std::fs::write(&json_path, &signed_json).map_err(|e| e.to_string())?;
 
-    // Initialize or get the wipe engine (mutex in Arc)
-    let engine_arc = WIPE_ENGINE.get_or_init(|| {
-        // IMPORTANT: SecureWipeEngine::new accepts AuditLogger instance, so pass reference
-        Arc::new(AsyncMutex::new(SecureWipeEngine::new(audit_logger.clone())))
-    }).clone();
+    let _ = window.emit("wipe-progress", serde_json::json!({ "pct": 100, "msg": "Completed" }));
 
-    // Acquire async lock
-    let mut engine = engine_arc.lock().await;
-    let result = engine.wipe_device(&device_path, &device_id, method).await.map_err(|e| e.to_string())?;
-
-    if !result.success {
-        return Err(format!("Wipe failed: {:?}", result.error_message));
-    }
-
-    let device = {
-        let dm_lock = DEVICE_MANAGER.get_or_init(|| Mutex::new(DeviceManager::new()))
-            .lock()
-            .map_err(|e| format!("DeviceManager lock error: {}", e))?;
-        dm_lock.devices.get(&device_id).cloned()
-    }.ok_or_else(|| "Device not found".to_string())?;
-
-    // Initialize CryptoManager separately; CryptoManager::new() returns Result<Self, _>
-    let crypto_manager = crypto::CryptoManager::new().expect("CryptoManager init error");
-
-    // Certificate generator depends on CryptoManager instance
-    let mut generator = CERTIFICATE_GENERATOR.get_or_init(|| {
-        Mutex::new(CertificateGenerator::new(crypto_manager))
-    }).lock().map_err(|e| format!("CertificateGenerator lock error: {}", e))?;
-
-    generator.generate_certificate(&device, &result).await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn cancel_wipe() -> Result<(), String> {
-    if let Some(engine_arc) = WIPE_ENGINE.get() {
-        let engine = engine_arc.lock().await;
-        engine.cancel_operation();
-        Ok(())
-    } else {
-        Err("No active wipe operation".to_string())
-    }
+    Ok(serde_json::json!({
+        "json": json_path.to_string_lossy().to_string(),
+        "pdf": "", // PDF generation can be integrated via 'printpdf' or 'wkhtmltopdf' crate
+    }))
 }
 
 fn main() {
-    DEVICE_MANAGER.set(Mutex::new(DeviceManager::new()))
-        .expect("Failed to initialize DEVICE_MANAGER");
-    AUDIT_LOGGER.set(AuditLogger::new("audit_log.json"))
-        .expect("Failed to initialize AUDIT_LOGGER");
-    // WIPE_ENGINE and CERTIFICATE_GENERATOR initialized lazily on first use
-
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![
-            scan_storage_devices,
-            get_audit_logs,
-            start_wipe,
-            cancel_wipe
-        ])
+        .invoke_handler(tauri::generate_handler![get_devices, wipe_device])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
